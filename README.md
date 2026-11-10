@@ -276,3 +276,5 @@ Tautan video 5-8 menit:
 ```text
 MASUKKAN_LINK_VIDEO_DI_SINI
 ```
+
+Pengujian CI/CD pada video demonstrasi berhasil.
