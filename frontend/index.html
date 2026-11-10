@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Papan tugas kelompok Cloud Computing kelas 47-REG-GAB02"
+    />
+    <title>Cloudboard · 47-REG-GAB02</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="logo"><span>CB</span><strong>Cloudboard</strong></div>
+        <div class="project-switcher">
+          <span class="project-avatar">CC</span>
+          <div><small>MATA KULIAH</small><strong>Cloud Computing</strong></div>
+        </div>
+        <nav>
+          <button class="nav-item active" data-view="board" type="button">
+            <span>▦</span>Papan tugas
+          </button>
+          <button class="nav-item" data-view="members" type="button">
+            <span>◎</span>Anggota
+          </button>
+          <button class="nav-item" data-view="about" type="button">
+            <span>ⓘ</span>Informasi proyek
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="service">
+            <i id="apiDot"></i>
+            <div>
+              <strong id="apiText">Memeriksa API</strong
+              ><small>Python REST API</small>
+            </div>
+          </div>
+          <div class="course">
+            <strong>47-REG-GAB02</strong
+            ><small>Semester 7 · Telkom University</small>
+          </div>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <button class="mobile-menu" id="mobileMenu" type="button">☰</button>
+          <label class="global-search"
+            ><span>⌕</span
+            ><input
+              id="search"
+              type="search"
+              placeholder="Cari tugas atau anggota..."
+          /></label>
+          <div class="top-actions">
+            <button class="primary" id="newTask" type="button">
+              ＋ Tambah tugas
+            </button>
+          </div>
+        </header>
+
+        <section class="view active" id="boardView">
+          <div class="page-head">
+            <div>
+              <div class="breadcrumbs">Cloud Computing / Papan tugas</div>
+              <h1>Proyek kelompok</h1>
+              <p>Kelola pembagian tugas, deadline, dan progres pengerjaan.</p>
+            </div>
+            <div class="member-stack" id="memberStack"></div>
+          </div>
+
+          <div class="overview-bar">
+            <div><small>Semua tugas</small><strong id="sumAll">0</strong></div>
+            <div>
+              <small>Belum dikerjakan</small><strong id="sumTodo">0</strong>
+            </div>
+            <div>
+              <small>Sedang dikerjakan</small><strong id="sumDoing">0</strong>
+            </div>
+            <div><small>Selesai</small><strong id="sumDone">0</strong></div>
+            <div>
+              <small>Terlambat</small
+              ><strong class="danger-text" id="sumLate">0</strong>
+            </div>
+            <div class="progress-wrap">
+              <div>
+                <small>Progres proyek</small><b id="progressLabel">0%</b>
+              </div>
+              <div class="progress-track"><i id="progressBar"></i></div>
+            </div>
+          </div>
+
+          <div class="board-toolbar">
+            <div class="view-tabs">
+              <button class="active" type="button">Board</button>
+            </div>
+            <div class="filters">
+              <select id="memberFilter">
+                <option value="all">Semua anggota</option>
+              </select>
+              <select id="categoryFilter">
+                <option value="all">Semua kategori</option>
+              </select>
+              <select id="priorityFilter">
+                <option value="all">Semua prioritas</option>
+                <option value="high">Tinggi</option>
+                <option value="medium">Sedang</option>
+                <option value="low">Rendah</option>
+              </select>
+              <button
+                class="icon-btn"
+                id="clearFilters"
+                type="button"
+                title="Reset filter"
+              >
+                ↺
+              </button>
+            </div>
+          </div>
+
+          <div class="kanban">
+            <section class="column" data-status="todo">
+              <header>
+                <div>
+                  <i class="status-dot todo"></i>
+                  <h2>Belum dikerjakan</h2>
+                  <span id="countTodo">0</span>
+                </div>
+                <button class="column-add" data-add="todo" type="button">
+                  ＋
+                </button>
+              </header>
+              <div class="cards" data-list="todo"></div>
+            </section>
+            <section class="column" data-status="in_progress">
+              <header>
+                <div>
+                  <i class="status-dot doing"></i>
+                  <h2>Sedang dikerjakan</h2>
+                  <span id="countDoing">0</span>
+                </div>
+                <button class="column-add" data-add="in_progress" type="button">
+                  ＋
+                </button>
+              </header>
+              <div class="cards" data-list="in_progress"></div>
+            </section>
+            <section class="column" data-status="completed">
+              <header>
+                <div>
+                  <i class="status-dot done"></i>
+                  <h2>Selesai</h2>
+                  <span id="countDone">0</span>
+                </div>
+                <button class="column-add" data-add="completed" type="button">
+                  ＋
+                </button>
+              </header>
+              <div class="cards" data-list="completed"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="membersView">
+          <div class="page-head">
+            <div>
+              <div class="breadcrumbs">Cloud Computing / Anggota</div>
+              <h1>Anggota kelompok</h1>
+              <p>Ringkasan pembagian tugas setiap anggota.</p>
+            </div>
+          </div>
+          <div class="members-grid" id="membersGrid"></div>
+        </section>
+
+        <section class="view" id="aboutView">
+          <div class="page-head">
+            <div>
+              <div class="breadcrumbs">Cloud Computing / Informasi proyek</div>
+              <h1>Informasi proyek</h1>
+              <p>Komponen yang digunakan pada aplikasi.</p>
+            </div>
+          </div>
+          <div class="about-grid">
+            <article>
+              <small>Frontend</small>
+              <h3>Nginx + HTML/CSS/JavaScript</h3>
+              <p>
+                Antarmuka berjalan di container terpisah dan mengakses backend
+                melalui service name.
+              </p>
+            </article>
+            <article>
+              <small>Backend</small>
+              <h3>Python REST API</h3>
+              <p>
+                Menyediakan GET, POST, PUT, PATCH, dan DELETE untuk data tugas.
+              </p>
+            </article>
+            <article>
+              <small>Penyimpanan</small>
+              <h3>team-task-data</h3>
+              <p>
+                Named volume menyimpan tasks.json agar data tetap ada setelah
+                container dibuat ulang.
+              </p>
+            </article>
+            <article>
+              <small>Network</small>
+              <h3>app-net</h3>
+              <p>
+                Custom bridge network menghubungkan container frontend dan
+                backend.
+              </p>
+            </article>
+          </div>
+          <div class="pipeline">
+            <h2>Jenkins pipeline</h2>
+            <div class="pipeline-steps">
+              <span>Checkout</span><i>→</i><span>Syntax Check</span><i>→</i
+              ><span>Build Image</span><i>→</i><span>Deployment</span><i>→</i
+              ><span>Health Check</span>
+            </div>
+            <p>
+              Status build sebenarnya diperiksa melalui Jenkins, bukan dibuat
+              secara statis di halaman ini.
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal" id="modal" hidden>
+      <form id="form">
+        <div class="modal-head">
+          <div>
+            <small id="formEyebrow">TUGAS BARU</small>
+            <h2 id="modalTitle">Tambah tugas</h2>
+          </div>
+          <button id="close" type="button">×</button>
+        </div>
+        <label
+          >Judul tugas<input
+            id="fTitle"
+            maxlength="120"
+            required
+            placeholder="Contoh: Konfigurasi Jenkins pipeline"
+        /></label>
+        <label
+          >Deskripsi<textarea
+            id="fDesc"
+            rows="3"
+            maxlength="500"
+            placeholder="Tuliskan hasil yang harus diselesaikan"
+          ></textarea>
+        </label>
+        <div class="form-row">
+          <label
+            >Penanggung jawab<input
+              id="fMember"
+              maxlength="60"
+              required
+              placeholder="Nama anggota" /></label
+          ><label>Deadline<input id="fDeadline" type="date" required /></label>
+        </div>
+        <div class="form-row">
+          <label
+            >Kategori<select id="fCategory">
+              <option>Backend API</option>
+              <option>Frontend</option>
+              <option>Docker</option>
+              <option>Storage</option>
+              <option>Networking</option>
+              <option>Jenkins</option>
+              <option>GitHub Webhook</option>
+              <option>Dokumentasi</option>
+              <option>Video Demo</option>
+            </select></label
+          ><label
+            >Prioritas<select id="fPriority">
+              <option value="medium">Sedang</option>
+              <option value="high">Tinggi</option>
+              <option value="low">Rendah</option>
+            </select></label
+          >
+        </div>
+        <input id="fStatus" type="hidden" value="todo" />
+        <div class="form-actions">
+          <button class="secondary" id="cancel" type="button">Batal</button
+          ><button class="primary" id="save" type="submit">Simpan tugas</button>
+        </div>
+      </form>
+    </div>
+    <div id="toasts"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
