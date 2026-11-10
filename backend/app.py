@@ -1,90 +1,718 @@
-import json, os, uuid
+import json
+import os
+import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
-HOST='0.0.0.0'; PORT=5000
-DATA_DIRECTORY=os.getenv('DATA_DIRECTORY','/var/lib/backend_data')
-DATA_FILE=os.path.join(DATA_DIRECTORY,'tasks.json')
 
-def now(): return datetime.now(timezone.utc).isoformat()
-def init():
-    os.makedirs(DATA_DIRECTORY,exist_ok=True)
+HOST = "0.0.0.0"
+PORT = 5000
+
+DATA_DIRECTORY = os.getenv(
+    "DATA_DIRECTORY",
+    "/var/lib/backend_data",
+)
+
+DATA_FILE = os.path.join(
+    DATA_DIRECTORY,
+    "tasks.json",
+)
+
+VALID_PRIORITIES = {
+    "low",
+    "medium",
+    "high",
+}
+
+VALID_STATUSES = {
+    "todo",
+    "in_progress",
+    "completed",
+}
+
+
+def get_current_time():
+    """Menghasilkan waktu UTC dalam format ISO 8601."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def initialize_storage():
+    """Membuat direktori dan file penyimpanan jika belum tersedia."""
+    os.makedirs(DATA_DIRECTORY, exist_ok=True)
+
     if not os.path.exists(DATA_FILE):
-        with open(DATA_FILE,'w',encoding='utf-8') as f: json.dump([],f)
-def read():
-    init()
-    try:
-        with open(DATA_FILE,encoding='utf-8') as f:
-            data=json.load(f); return data if isinstance(data,list) else []
-    except (OSError,json.JSONDecodeError): return []
-def write(data):
-    init(); tmp=DATA_FILE+'.tmp'
-    with open(tmp,'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,indent=2)
-    os.replace(tmp,DATA_FILE)
-def normalize(body,old=None):
-    old=old or {}; title=str(body.get('title',body.get('task',old.get('title',old.get('task',''))))).strip()
-    member=str(body.get('member',old.get('member',''))).strip(); deadline=str(body.get('deadline',old.get('deadline',''))).strip()
-    desc=str(body.get('description',old.get('description',''))).strip(); category=str(body.get('category',old.get('category','Lainnya'))).strip()
-    priority=str(body.get('priority',old.get('priority','medium'))).lower(); status=str(body.get('status',old.get('status','todo'))).lower()
-    if not title or not member or not deadline: raise ValueError('Judul, penanggung jawab, dan deadline wajib diisi')
-    datetime.strptime(deadline,'%Y-%m-%d')
-    if priority not in {'low','medium','high'}: raise ValueError('Prioritas tidak valid')
-    if status not in {'todo','in_progress','completed'}: raise ValueError('Status tidak valid')
-    return {'id':old.get('id') or 'task-'+uuid.uuid4().hex[:10], 'title':title[:120], 'task':title[:120], 'description':desc[:500], 'member':member[:60], 'category':category[:40], 'priority':priority, 'status':status, 'deadline':deadline, 'created_at':old.get('created_at') or now(), 'updated_at':now()}
+        with open(DATA_FILE, "w", encoding="utf-8") as file:
+            json.dump([], file, ensure_ascii=False, indent=2)
 
-class H(BaseHTTPRequestHandler):
-    def sendj(self,code,payload):
-        raw=json.dumps(payload,ensure_ascii=False).encode(); self.send_response(code); self.send_header('Content-Type','application/json; charset=utf-8'); self.send_header('Content-Length',str(len(raw))); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write(raw)
-    def body(self):
-        n=int(self.headers.get('Content-Length','0'))
-        if n<1 or n>200000: raise ValueError('Body tidak valid')
-        return json.loads(self.rfile.read(n).decode())
-    def index(self,items,q):
-        ident=q.get('id',[''])[0]
-        if ident:
-            return next((i for i,x in enumerate(items) if x.get('id')==ident),-1)
-        try: return int(q.get('index',['-1'])[0])
-        except ValueError: return -1
+
+def read_tasks():
+    """Membaca seluruh data tugas dari tasks.json."""
+    initialize_storage()
+
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+            if isinstance(data, list):
+                return data
+
+            return []
+
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def write_tasks(tasks):
+    """Menyimpan data tugas secara aman menggunakan file sementara."""
+    initialize_storage()
+
+    temporary_file = f"{DATA_FILE}.tmp"
+
+    with open(temporary_file, "w", encoding="utf-8") as file:
+        json.dump(
+            tasks,
+            file,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    os.replace(temporary_file, DATA_FILE)
+
+
+def normalize_task(request_data, existing_task=None):
+    """Memvalidasi dan merapikan struktur data tugas."""
+    existing_task = existing_task or {}
+
+    title = str(
+        request_data.get(
+            "title",
+            request_data.get(
+                "task",
+                existing_task.get(
+                    "title",
+                    existing_task.get("task", ""),
+                ),
+            ),
+        )
+    ).strip()
+
+    description = str(
+        request_data.get(
+            "description",
+            existing_task.get("description", ""),
+        )
+    ).strip()
+
+    member = str(
+        request_data.get(
+            "member",
+            existing_task.get("member", ""),
+        )
+    ).strip()
+
+    deadline = str(
+        request_data.get(
+            "deadline",
+            existing_task.get("deadline", ""),
+        )
+    ).strip()
+
+    category = str(
+        request_data.get(
+            "category",
+            existing_task.get("category", "Lainnya"),
+        )
+    ).strip()
+
+    priority = str(
+        request_data.get(
+            "priority",
+            existing_task.get("priority", "medium"),
+        )
+    ).lower()
+
+    status = str(
+        request_data.get(
+            "status",
+            existing_task.get("status", "todo"),
+        )
+    ).lower()
+
+    if not title:
+        raise ValueError("Judul tugas wajib diisi")
+
+    if not member:
+        raise ValueError("Penanggung jawab wajib diisi")
+
+    if not deadline:
+        raise ValueError("Deadline wajib diisi")
+
+    try:
+        datetime.strptime(deadline, "%Y-%m-%d")
+    except ValueError as error:
+        raise ValueError(
+            "Format deadline harus YYYY-MM-DD"
+        ) from error
+
+    if priority not in VALID_PRIORITIES:
+        raise ValueError(
+            "Prioritas harus low, medium, atau high"
+        )
+
+    if status not in VALID_STATUSES:
+        raise ValueError(
+            "Status harus todo, in_progress, atau completed"
+        )
+
+    return {
+        "id": existing_task.get("id")
+        or f"task-{uuid.uuid4().hex[:10]}",
+        "title": title[:120],
+        "task": title[:120],
+        "description": description[:500],
+        "member": member[:60],
+        "category": category[:40],
+        "priority": priority,
+        "status": status,
+        "deadline": deadline,
+        "created_at": existing_task.get("created_at")
+        or get_current_time(),
+        "updated_at": get_current_time(),
+    }
+
+
+class TaskAPIHandler(BaseHTTPRequestHandler):
+    """HTTP handler untuk Cloud Task REST API."""
+
+    server_version = "CloudTaskAPI/1.0"
+
+    def send_json_response(self, status_code, payload):
+        """Mengirim response dalam format JSON."""
+        response = json.dumps(
+            payload,
+            ensure_ascii=False,
+        ).encode("utf-8")
+
+        self.send_response(status_code)
+
+        self.send_header(
+            "Content-Type",
+            "application/json; charset=utf-8",
+        )
+
+        self.send_header(
+            "Content-Length",
+            str(len(response)),
+        )
+
+        self.send_header(
+            "Cache-Control",
+            "no-store",
+        )
+
+        self.end_headers()
+        self.wfile.write(response)
+
+    def read_json_body(self):
+        """Membaca dan memvalidasi request body JSON."""
+        try:
+            content_length = int(
+                self.headers.get("Content-Length", "0")
+            )
+        except ValueError as error:
+            raise ValueError(
+                "Content-Length tidak valid"
+            ) from error
+
+        if content_length < 1:
+            raise ValueError("Request body tidak boleh kosong")
+
+        if content_length > 200_000:
+            raise ValueError("Request body terlalu besar")
+
+        request_body = self.rfile.read(content_length)
+
+        try:
+            return json.loads(
+                request_body.decode("utf-8")
+            )
+
+        except (
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+        ) as error:
+            raise ValueError(
+                "Format JSON tidak valid"
+            ) from error
+
+    def find_task_index(self, tasks, query):
+        """Mencari indeks tugas menggunakan ID atau index."""
+        task_id = query.get("id", [""])[0]
+
+        if task_id:
+            return next(
+                (
+                    index
+                    for index, task in enumerate(tasks)
+                    if task.get("id") == task_id
+                ),
+                -1,
+            )
+
+        try:
+            return int(
+                query.get("index", ["-1"])[0]
+            )
+
+        except ValueError:
+            return -1
+
     def do_GET(self):
-        p=urlparse(self.path)
-        if p.path=='/health':
-            writable=os.access(DATA_DIRECTORY,os.W_OK); self.sendj(200,{'status':'healthy','service':'orbitask-api','storage':'writable' if writable else 'readonly','checked_at':now()}); return
-        if p.path=='/tasks':
-            items=read()
-            for x in items:
-                if 'title' not in x: x['title']=x.get('task','Tanpa judul')
-                x.setdefault('status','todo'); x.setdefault('category','Lainnya'); x.setdefault('description',''); x.setdefault('updated_at',x.get('created_at',now()))
-            self.sendj(200,{'status':'success','count':len(items),'data':items}); return
-        if p.path=='/stats':
-            items=read(); counts={s:sum(1 for x in items if x.get('status','todo')==s) for s in ['todo','in_progress','completed']}
-            members={}
-            for x in items:
-                m=x.get('member','Tidak ditentukan'); members.setdefault(m,{'total':0,'completed':0}); members[m]['total']+=1; members[m]['completed']+=x.get('status')=='completed'
-            self.sendj(200,{'status':'success','data':{'total':len(items),**counts,'members':members}}); return
-        self.sendj(404,{'status':'error','message':'Endpoint tidak ditemukan'})
+        """Menangani request GET."""
+        parsed_url = urlparse(self.path)
+
+        if parsed_url.path == "/health":
+            initialize_storage()
+
+            storage_writable = os.access(
+                DATA_DIRECTORY,
+                os.W_OK,
+            )
+
+            self.send_json_response(
+                200,
+                {
+                    "status": "healthy",
+                    "service": "cloud-task-api",
+                    "storage": (
+                        "writable"
+                        if storage_writable
+                        else "readonly"
+                    ),
+                    "checked_at": get_current_time(),
+                },
+            )
+            return
+
+        if parsed_url.path == "/tasks":
+            tasks = read_tasks()
+            data_changed = False
+
+            for task in tasks:
+                if "title" not in task:
+                    task["title"] = task.get(
+                        "task",
+                        "Tanpa judul",
+                    )
+                    data_changed = True
+
+                if "task" not in task:
+                    task["task"] = task.get(
+                        "title",
+                        "Tanpa judul",
+                    )
+                    data_changed = True
+
+                if "status" not in task:
+                    task["status"] = "todo"
+                    data_changed = True
+
+                if "category" not in task:
+                    task["category"] = "Lainnya"
+                    data_changed = True
+
+                if "description" not in task:
+                    task["description"] = ""
+                    data_changed = True
+
+                if "priority" not in task:
+                    task["priority"] = "medium"
+                    data_changed = True
+
+                if "created_at" not in task:
+                    task["created_at"] = get_current_time()
+                    data_changed = True
+
+                if "updated_at" not in task:
+                    task["updated_at"] = task.get(
+                        "created_at",
+                        get_current_time(),
+                    )
+                    data_changed = True
+
+            if data_changed:
+                write_tasks(tasks)
+
+            self.send_json_response(
+                200,
+                {
+                    "status": "success",
+                    "count": len(tasks),
+                    "data": tasks,
+                },
+            )
+            return
+
+        if parsed_url.path == "/stats":
+            tasks = read_tasks()
+
+            todo_count = sum(
+                1
+                for task in tasks
+                if task.get("status", "todo") == "todo"
+            )
+
+            in_progress_count = sum(
+                1
+                for task in tasks
+                if task.get("status") == "in_progress"
+            )
+
+            completed_count = sum(
+                1
+                for task in tasks
+                if task.get("status") == "completed"
+            )
+
+            member_statistics = {}
+
+            for task in tasks:
+                member_name = task.get(
+                    "member",
+                    "Tidak ditentukan",
+                )
+
+                if member_name not in member_statistics:
+                    member_statistics[member_name] = {
+                        "total": 0,
+                        "todo": 0,
+                        "in_progress": 0,
+                        "completed": 0,
+                    }
+
+                member_statistics[member_name]["total"] += 1
+
+                task_status = task.get(
+                    "status",
+                    "todo",
+                )
+
+                if task_status in VALID_STATUSES:
+                    member_statistics[
+                        member_name
+                    ][task_status] += 1
+
+            self.send_json_response(
+                200,
+                {
+                    "status": "success",
+                    "data": {
+                        "total": len(tasks),
+                        "todo": todo_count,
+                        "in_progress": in_progress_count,
+                        "completed": completed_count,
+                        "members": member_statistics,
+                    },
+                },
+            )
+            return
+
+        self.send_json_response(
+            404,
+            {
+                "status": "error",
+                "message": "Endpoint tidak ditemukan",
+            },
+        )
+
     def do_POST(self):
-        if urlparse(self.path).path!='/tasks': self.sendj(404,{'status':'error','message':'Endpoint tidak ditemukan'}); return
+        """Menangani penambahan tugas."""
+        parsed_url = urlparse(self.path)
+
+        if parsed_url.path != "/tasks":
+            self.send_json_response(
+                404,
+                {
+                    "status": "error",
+                    "message": "Endpoint tidak ditemukan",
+                },
+            )
+            return
+
         try:
-            item=normalize(self.body()); items=read(); items.append(item); write(items); self.sendj(201,{'status':'success','message':'Tugas berhasil dibuat','data':item})
-        except (ValueError,json.JSONDecodeError) as e: self.sendj(400,{'status':'error','message':str(e)})
+            request_data = self.read_json_body()
+            new_task = normalize_task(request_data)
+
+            tasks = read_tasks()
+            tasks.append(new_task)
+
+            write_tasks(tasks)
+
+            self.send_json_response(
+                201,
+                {
+                    "status": "success",
+                    "message": "Tugas berhasil dibuat",
+                    "data": new_task,
+                },
+            )
+
+        except ValueError as error:
+            self.send_json_response(
+                400,
+                {
+                    "status": "error",
+                    "message": str(error),
+                },
+            )
+
+        except OSError:
+            self.send_json_response(
+                500,
+                {
+                    "status": "error",
+                    "message": "Gagal menyimpan data tugas",
+                },
+            )
+
     def do_PUT(self):
-        p=urlparse(self.path); items=read(); i=self.index(items,parse_qs(p.query))
-        if p.path!='/tasks' or i<0 or i>=len(items): self.sendj(404,{'status':'error','message':'Tugas tidak ditemukan'}); return
+        """Menangani pembaruan seluruh informasi tugas."""
+        parsed_url = urlparse(self.path)
+        query = parse_qs(parsed_url.query)
+
+        if parsed_url.path != "/tasks":
+            self.send_json_response(
+                404,
+                {
+                    "status": "error",
+                    "message": "Endpoint tidak ditemukan",
+                },
+            )
+            return
+
+        tasks = read_tasks()
+        task_index = self.find_task_index(
+            tasks,
+            query,
+        )
+
+        if (
+            task_index < 0
+            or task_index >= len(tasks)
+        ):
+            self.send_json_response(
+                404,
+                {
+                    "status": "error",
+                    "message": "Tugas tidak ditemukan",
+                },
+            )
+            return
+
         try:
-            items[i]=normalize(self.body(),items[i]); write(items); self.sendj(200,{'status':'success','message':'Tugas berhasil diperbarui','data':items[i]})
-        except (ValueError,json.JSONDecodeError) as e: self.sendj(400,{'status':'error','message':str(e)})
+            request_data = self.read_json_body()
+
+            tasks[task_index] = normalize_task(
+                request_data,
+                tasks[task_index],
+            )
+
+            write_tasks(tasks)
+
+            self.send_json_response(
+                200,
+                {
+                    "status": "success",
+                    "message": "Tugas berhasil diperbarui",
+                    "data": tasks[task_index],
+                },
+            )
+
+        except ValueError as error:
+            self.send_json_response(
+                400,
+                {
+                    "status": "error",
+                    "message": str(error),
+                },
+            )
+
+        except OSError:
+            self.send_json_response(
+                500,
+                {
+                    "status": "error",
+                    "message": "Gagal memperbarui tugas",
+                },
+            )
+
     def do_PATCH(self):
-        p=urlparse(self.path); items=read(); i=self.index(items,parse_qs(p.query))
-        if p.path!='/tasks/status' or i<0 or i>=len(items): self.sendj(404,{'status':'error','message':'Tugas tidak ditemukan'}); return
+        """Menangani perubahan status tugas."""
+        parsed_url = urlparse(self.path)
+        query = parse_qs(parsed_url.query)
+
+        if parsed_url.path != "/tasks/status":
+            self.send_json_response(
+                404,
+                {
+                    "status": "error",
+                    "message": "Endpoint tidak ditemukan",
+                },
+            )
+            return
+
+        tasks = read_tasks()
+        task_index = self.find_task_index(
+            tasks,
+            query,
+        )
+
+        if (
+            task_index < 0
+            or task_index >= len(tasks)
+        ):
+            self.send_json_response(
+                404,
+                {
+                    "status": "error",
+                    "message": "Tugas tidak ditemukan",
+                },
+            )
+            return
+
         try:
-            body=self.body(); status=str(body.get('status',''))
-            if status not in {'todo','in_progress','completed'}: raise ValueError('Status tidak valid')
-            items[i]['status']=status; items[i]['updated_at']=now(); write(items); self.sendj(200,{'status':'success','message':'Status tugas diperbarui','data':items[i]})
-        except (ValueError,json.JSONDecodeError) as e: self.sendj(400,{'status':'error','message':str(e)})
+            request_data = self.read_json_body()
+
+            new_status = str(
+                request_data.get("status", "")
+            ).lower()
+
+            if new_status not in VALID_STATUSES:
+                raise ValueError(
+                    "Status harus todo, in_progress, "
+                    "atau completed"
+                )
+
+            tasks[task_index]["status"] = new_status
+
+            tasks[task_index][
+                "updated_at"
+            ] = get_current_time()
+
+            write_tasks(tasks)
+
+            self.send_json_response(
+                200,
+                {
+                    "status": "success",
+                    "message": "Status tugas diperbarui",
+                    "data": tasks[task_index],
+                },
+            )
+
+        except ValueError as error:
+            self.send_json_response(
+                400,
+                {
+                    "status": "error",
+                    "message": str(error),
+                },
+            )
+
+        except OSError:
+            self.send_json_response(
+                500,
+                {
+                    "status": "error",
+                    "message": "Gagal memperbarui status",
+                },
+            )
+
     def do_DELETE(self):
-        p=urlparse(self.path); items=read(); i=self.index(items,parse_qs(p.query))
-        if p.path!='/tasks' or i<0 or i>=len(items): self.sendj(404,{'status':'error','message':'Tugas tidak ditemukan'}); return
-        deleted=items.pop(i); write(items); self.sendj(200,{'status':'success','message':'Tugas dihapus permanen','data':deleted})
-    def log_message(self,fmt,*args): print('[Orbitask API]',fmt%args)
-if __name__=='__main__': init(); print('Orbitask API port',PORT); ThreadingHTTPServer((HOST,PORT),H).serve_forever()
+        """Menangani penghapusan tugas."""
+        parsed_url = urlparse(self.path)
+        query = parse_qs(parsed_url.query)
+
+        if parsed_url.path != "/tasks":
+            self.send_json_response(
+                404,
+                {
+                    "status": "error",
+                    "message": "Endpoint tidak ditemukan",
+                },
+            )
+            return
+
+        tasks = read_tasks()
+        task_index = self.find_task_index(
+            tasks,
+            query,
+        )
+
+        if (
+            task_index < 0
+            or task_index >= len(tasks)
+        ):
+            self.send_json_response(
+                404,
+                {
+                    "status": "error",
+                    "message": "Tugas tidak ditemukan",
+                },
+            )
+            return
+
+        try:
+            deleted_task = tasks.pop(task_index)
+            write_tasks(tasks)
+
+            self.send_json_response(
+                200,
+                {
+                    "status": "success",
+                    "message": "Tugas dihapus permanen",
+                    "data": deleted_task,
+                },
+            )
+
+        except OSError:
+            self.send_json_response(
+                500,
+                {
+                    "status": "error",
+                    "message": "Gagal menghapus tugas",
+                },
+            )
+
+    def log_message(self, log_format, *args):
+        """Menampilkan log request dengan nama aplikasi final."""
+        print(
+            "[Cloud Task API]",
+            log_format % args,
+        )
+
+
+if __name__ == "__main__":
+    initialize_storage()
+
+    server = ThreadingHTTPServer(
+        (HOST, PORT),
+        TaskAPIHandler,
+    )
+
+    print(
+        f"Cloud Task API berjalan pada "
+        f"http://{HOST}:{PORT}"
+    )
+
+    try:
+        server.serve_forever()
+
+    except KeyboardInterrupt:
+        print(
+            "\nCloud Task API dihentikan."
+        )
+
+    finally:
+        server.server_close()
