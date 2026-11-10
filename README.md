@@ -274,7 +274,7 @@ Repository tidak menyimpan GitHub Personal Access Token, ngrok authtoken, passwo
 Tautan video 5-8 menit:
 
 ```text
-MASUKKAN_LINK_VIDEO_DI_SINI
+https://youtu.be/X-Qdt-P0ufY
 ```
 
 Pengujian CI/CD pada video demonstrasi berhasil.
